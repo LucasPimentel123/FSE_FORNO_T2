@@ -38,5 +38,5 @@ def CRC16(crc, data):
 def calcula_CRC(commands, size):
 	crc = 0
 	for i in range(0, size):
-		crc = CRC16(crc, commands[i]);
-	return 
+		crc = CRC16(crc, commands[i])
+	return crc

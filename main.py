@@ -51,28 +51,14 @@ class Main():
                         pid_atual *= -1
                         if(pid_atual < 40):
                             pid_atual = 40
-                        self.forno.cool_down(pid_result)
+                        self.forno.cool_down(pid_atual)
                     else:    
-                        self.forno.heat(self.pid.pid_controle(self.ref_temp, self.internal_temp))
+                        self.forno.heat(pid_atual)
 
                     self.read_temperatures()
                     self.read_user_comands()
                     
             elif self.response == 164:
-                room_temp = I2C()
-
-                self.uart.write(Modbus.request_internal_temp,  7)
-
-                data = self.uart.read()
-        
-                internal_temp = struct.unpack('f', data)[0]
-                pid_result = self.pid.pid_controle(room_temp, internal_temp)
-
-                pid_result *= -1
-                if pid_result < 40:
-                    pid_result = 40
-
-                self.forno.cool_down(pid_result)
                 pass
             elif self.response == 165:
                 pass

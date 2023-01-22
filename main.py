@@ -11,6 +11,7 @@ class Main():
     uart = Uart()
     pid = PID()
     forno = Forno()
+    i2c = I2C()
     ref_temp = 0
     internal_temp = 0
     response = 0
@@ -43,7 +44,14 @@ class Main():
             elif self.response == 163:
                 self.read_temperatures()
 
-                while self.internal_temp != self.ref_temp:
+                message = Modbus.send_sys_state + b'\x01'
+                self.uart.write(message,  8)
+                data = self.uart.read()
+                
+                if data == b'\x01\x00\x00\x00':
+                    print("Sistema em funcionamento")
+
+                while self.response != 164:
                     pid_atual = self.pid.pid_controle(self.ref_temp, self.internal_temp)
                     print("pid " + str(pid_atual))
                     
@@ -51,17 +59,26 @@ class Main():
                         pid_atual *= -1
                         if(pid_atual < 40):
                             pid_atual = 40
+                        print("Esfriando")
                         self.forno.cool_down(pid_atual)
-                    else:    
+                    else: 
+                        print("Esquentando")   
                         self.forno.heat(pid_atual)
 
                     self.read_temperatures()
                     self.read_user_comands()
-                    
-            elif self.response == 164:
-                pass
+                self.turn_off_system()
+                
             elif self.response == 165:
-                pass
+                message = Modbus.change_ref_temp_control_mode + b'\x01'
+                self.uart.write(message,  8)
+                data = self.uart.read()
+
+                self.internal_temp = self.read_internal_temp()
+
+                pid = self.pid.pid_controle(self.ref_temp, self.internal_temp)
+
+
             else:
                 pass 
 
@@ -99,6 +116,19 @@ class Main():
             response = self.uart.read()
             self.response = struct.unpack('i', response)[0]
             time.sleep(0.5)
+
+    def turn_off_system(self):
+        message = Modbus.send_sys_state + b'\x00'
+        self.uart.write(message,  8)
+        data = self.uart.read()
+        time.sleep(0.5)
+        if data == b'\x00\x00\x00\x00':
+            print("Sistema interrompido")
+            room_temp = self.i2c.return_room_temp()
+            if  self.internal_temp > room_temp:
+                self.forno.cool_down(self.pid.pid_controle(room_temp, self.internal_temp))
+            elif self.internal_temp < room_temp:
+                self.forno.heat(self.pid.pid_controle(room_temp, self.internal_temp))
 
 
 if __name__ == '__main__':

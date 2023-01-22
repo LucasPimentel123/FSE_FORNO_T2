@@ -139,6 +139,7 @@ class Main():
             print("Sistema interrompido")
             if  self.internal_temp > self.room_temp:
                 self.forno.cool_down(self.pid.pid_controle(self.room_temp, self.internal_temp))
+                
             elif self.internal_temp < self.room_temp:
                 self.forno.heat(self.pid.pid_controle(self.room_temp, self.internal_temp))
     

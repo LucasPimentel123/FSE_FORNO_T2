@@ -73,12 +73,18 @@ class Main():
                 message = Modbus.change_ref_temp_control_mode + b'\x01'
                 self.uart.write(message,  8)
                 data = self.uart.read()
+                self.response = 0
 
-                self.internal_temp = self.read_internal_temp()
+                if data == b'\x01\x00\x00\x00':
+                    print("Modo curva ativado") 
 
-                pid = self.pid.pid_controle(self.ref_temp, self.internal_temp)
+                self.debug_algorithm()
 
-
+                message = Modbus.change_ref_temp_control_mode + b'\x00'
+                self.uart.write(message,  8)
+                data = self.uart.read()
+                if data == b'\x00\x00\x00\x00':
+                    print("Modo curva desativado") 
             else:
                 pass 
 
@@ -130,6 +136,34 @@ class Main():
             elif self.internal_temp < room_temp:
                 self.forno.heat(self.pid.pid_controle(room_temp, self.internal_temp))
 
+    def debug_algorithm(self):
+        i = 0
+        pilha_tempo = [0, 60, 120, 240, 260, 300, 360, 420,480, 600]
+        pilha_ref = [25, 38, 46, 54, 57, 61, 63 ,54, 33, 25]
+        aux = 0
+        while len(pilha_tempo) > 0 and self.response != 165:
+            if(pilha_tempo[0] == i):
+                pilha_tempo.pop(0)
+                aux = pilha_ref.pop(0)
+
+            self.read_internal_temp()
+        
+            pid_atual = self.pid.pid_controle(aux , self.internal_temp)
+
+            if(pid_atual < 0):
+                pid_atual *= -1
+                if(pid_atual < 40):
+                    pid_atual = 40
+                print("Esfriando")
+                self.forno.cool_down(pid_atual)
+            else: 
+                print("Esquentando")   
+                self.forno.heat(pid_atual)
+                
+            self.read_user_comands()
+
+            time.sleep(1)
+            i = i + 1
 
 if __name__ == '__main__':
     Main()

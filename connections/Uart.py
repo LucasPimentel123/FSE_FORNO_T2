@@ -31,7 +31,7 @@ class Uart:
 
     def read(self):
         if (self.isConected):
-            time.sleep(0.1)
+            time.sleep(0.5)
             buffer = self.serial.read(9)
             size = len(buffer)
 

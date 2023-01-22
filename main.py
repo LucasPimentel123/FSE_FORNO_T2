@@ -5,35 +5,48 @@ import struct
 from connections.I2C import I2C
 from Forno import Forno
 import time
-from threading import Event, Thread 
+from threading import Event, Thread
+from Utils.Csv import Csv
+import datetime
+
+LIGAR_FORNO = 161
+DESLIGAR_FORNO = 162
+LIGAR_SISTEMA = 163
+DESLIGAR_SISTEMA = 164
+ALTERAR_MODO = 165
 
 class Main():
     uart = Uart()
     pid = PID()
     forno = Forno()
     i2c = I2C()
+    csv = Csv()
     ref_temp = 0
     internal_temp = 0
     response = 0
+    room_temp = 0
 
     def __init__(self):
+        thread_csv = Thread(target=self.register_log, args=())
+        thread_csv.start()
+
         self.menu()
 
     def menu(self):
         while(True):
 
-            self.read_user_comands()
+            ##self.read_user_comands()
 
-            print(self.response)
+            ##print(self.response)
 
-            if self.response == 161:
+            if self.response == LIGAR_FORNO:
                 message = Modbus.send_sys_on_off + b'\x01'
                 self.uart.write(message,  8)
                 data = self.uart.read()
                 if data == b'\x01\x00\x00\x00':
                     print("Liga o Forno")
 
-            elif self.response == 162:
+            elif self.response == DESLIGAR_FORNO:
                 message = Modbus.send_sys_on_off + b'\x00'
                 self.uart.write(message,  8)
                 data = self.uart.read()
@@ -41,17 +54,10 @@ class Main():
                 if data == b'\x00\x00\x00\x00':
                     print("Desliga o Forno")
                     
-            elif self.response == 163:
-                self.read_temperatures()
+            elif self.response == LIGAR_SISTEMA:
+                self.turn_on_system()
 
-                message = Modbus.send_sys_state + b'\x01'
-                self.uart.write(message,  8)
-                data = self.uart.read()
-                
-                if data == b'\x01\x00\x00\x00':
-                    print("Sistema em funcionamento")
-
-                while self.response != 164:
+                while self.response != DESLIGAR_SISTEMA:
                     pid_atual = self.pid.pid_controle(self.ref_temp, self.internal_temp)
                     print("pid " + str(pid_atual))
                     
@@ -65,11 +71,10 @@ class Main():
                         print("Esquentando")   
                         self.forno.heat(pid_atual)
 
-                    self.read_temperatures()
-                    self.read_user_comands()
+                    ##self.read_user_comands()
                 self.turn_off_system()
                 
-            elif self.response == 165:
+            elif self.response == ALTERAR_MODO:
                 message = Modbus.change_ref_temp_control_mode + b'\x01'
                 self.uart.write(message,  8)
                 data = self.uart.read()
@@ -91,9 +96,8 @@ class Main():
 
     def read_temperatures(self):
         self.read_ref_temp()
-        time.sleep(0.5)
         self.read_internal_temp()
-        time.sleep(0.5)
+        self.read_room_temp()
 
     
     def read_ref_temp(self):
@@ -115,13 +119,16 @@ class Main():
 
         print(self.internal_temp)
     
+    def read_room_temp(self):
+        self.room_temp = self.i2c.return_room_temp()
+    
     def read_user_comands(self):
             print("Esperando comando...")
             self.uart.write(Modbus.read_user_commands,  7)
 
             response = self.uart.read()
             self.response = struct.unpack('i', response)[0]
-            time.sleep(0.5)
+            print("Comando do usuário: ", self.response)
 
     def turn_off_system(self):
         message = Modbus.send_sys_state + b'\x00'
@@ -130,23 +137,28 @@ class Main():
         time.sleep(0.5)
         if data == b'\x00\x00\x00\x00':
             print("Sistema interrompido")
-            room_temp = self.i2c.return_room_temp()
-            if  self.internal_temp > room_temp:
-                self.forno.cool_down(self.pid.pid_controle(room_temp, self.internal_temp))
-            elif self.internal_temp < room_temp:
-                self.forno.heat(self.pid.pid_controle(room_temp, self.internal_temp))
+            if  self.internal_temp > self.room_temp:
+                self.forno.cool_down(self.pid.pid_controle(self.room_temp, self.internal_temp))
+            elif self.internal_temp < self.room_temp:
+                self.forno.heat(self.pid.pid_controle(self.room_temp, self.internal_temp))
+    
+    def turn_on_system(self):
+        message = Modbus.send_sys_state + b'\x01'
+        self.uart.write(message,  8)
+        data = self.uart.read()
+        
+        if data == b'\x01\x00\x00\x00':
+            print("Sistema em funcionamento")
 
     def debug_algorithm(self):
         i = 0
         pilha_tempo = [0, 60, 120, 240, 260, 300, 360, 420,480, 600]
         pilha_ref = [25, 38, 46, 54, 57, 61, 63 ,54, 33, 25]
         aux = 0
-        while len(pilha_tempo) > 0 and self.response != 165:
+        while len(pilha_tempo) > 0 and self.response != ALTERAR_MODO:
             if(pilha_tempo[0] == i):
                 pilha_tempo.pop(0)
                 aux = pilha_ref.pop(0)
-
-            self.read_internal_temp()
         
             pid_atual = self.pid.pid_controle(aux , self.internal_temp)
 
@@ -160,10 +172,24 @@ class Main():
                 print("Esquentando")   
                 self.forno.heat(pid_atual)
                 
-            self.read_user_comands()
+            ##self.read_user_comands()
 
             time.sleep(1)
             i = i + 1
+        
+    def register_log(self):
+        header = ['Data/Hora', 'Temp Interna', 'Temp Ambiente', 'Temp Ref', 'Valor Acionamento' ]
+        self.csv.write(header)
+
+        while True:
+            data = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+            self.read_user_comands()
+            self.read_temperatures()
+            line = [data, self.internal_temp, self.room_temp , self.ref_temp, self.pid.sinal_de_controle]
+            print(line)
+            self.csv.write(line)
+            time.sleep(1)
+
 
 if __name__ == '__main__':
     Main()

@@ -35,10 +35,6 @@ class Main():
     def menu(self):
         while(True):
 
-            ##self.read_user_comands()
-
-            ##print(self.response)
-
             if self.response == LIGAR_FORNO:
                 message = Modbus.send_sys_on_off + b'\x01'
                 self.uart.write(message,  8)
@@ -71,7 +67,10 @@ class Main():
                         print("Esquentando")   
                         self.forno.heat(pid_atual)
 
-                    ##self.read_user_comands()
+                    time.sleep(1)
+                self.turn_off_system()
+            
+            elif self.response == DESLIGAR_SISTEMA:
                 self.turn_off_system()
                 
             elif self.response == ALTERAR_MODO:
@@ -107,7 +106,7 @@ class Main():
         data = self.uart.read()
         self.ref_temp = struct.unpack('f', data)[0]
 
-        print(self.ref_temp)
+        print("Temp ref:" ,self.ref_temp)
 
     
     def read_internal_temp(self):
@@ -117,7 +116,7 @@ class Main():
         data = self.uart.read()
         self.internal_temp = struct.unpack('f', data)[0]
 
-        print(self.internal_temp)
+        print("Temp interna: ",self.internal_temp)
     
     def read_room_temp(self):
         self.room_temp = self.i2c.return_room_temp()
@@ -134,12 +133,20 @@ class Main():
         message = Modbus.send_sys_state + b'\x00'
         self.uart.write(message,  8)
         data = self.uart.read()
-        time.sleep(0.5)
+        self.set_ref_temp_room_temp(data)
+        
+    
+    def set_ref_temp_room_temp(self, data):
         if data == b'\x00\x00\x00\x00':
             print("Sistema interrompido")
             if  self.internal_temp > self.room_temp:
-                self.forno.cool_down(self.pid.pid_controle(self.room_temp, self.internal_temp))
-                
+                pid_atual = self.pid.pid_controle(self.room_temp, self.internal_temp)
+                if(pid_atual < 0):
+                        pid_atual *= -1
+                        if(pid_atual < 40):
+                            pid_atual = 40
+                self.forno.cool_down(pid_atual)
+
             elif self.internal_temp < self.room_temp:
                 self.forno.heat(self.pid.pid_controle(self.room_temp, self.internal_temp))
     
@@ -150,6 +157,12 @@ class Main():
         
         if data == b'\x01\x00\x00\x00':
             print("Sistema em funcionamento")
+    
+    def send_control_signal(self, signal):
+        value = (round(signal)).to_bytes(4, 'little', signed=True)
+        message = Modbus.send_control_signal + value
+        self.uart.write(message, 11)
+        self.uart.read()
 
     def debug_algorithm(self):
         i = 0
@@ -163,6 +176,8 @@ class Main():
         
             pid_atual = self.pid.pid_controle(aux , self.internal_temp)
 
+            self.send_control_signal(pid_atual)
+
             if(pid_atual < 0):
                 pid_atual *= -1
                 if(pid_atual < 40):
@@ -172,8 +187,6 @@ class Main():
             else: 
                 print("Esquentando")   
                 self.forno.heat(pid_atual)
-                
-            ##self.read_user_comands()
 
             time.sleep(1)
             i = i + 1
@@ -187,7 +200,6 @@ class Main():
             self.read_user_comands()
             self.read_temperatures()
             line = [data, self.internal_temp, self.room_temp , self.ref_temp, self.pid.sinal_de_controle]
-            print(line)
             self.csv.write(line)
             time.sleep(1)
 

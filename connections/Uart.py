@@ -42,10 +42,10 @@ class Uart:
                     return data
                 else:
                     print('CRC invalido')
-                    return b'\x00'
+                    return b'\x00\x00\x00\x00'
             else:
                 print('Mensagem Invalida')
-                return b'\x00'
+                return b'\x00\x00\x00\x00'
     
     def crc_is_valid(self, buffer):
         received_crc = buffer[7:9]

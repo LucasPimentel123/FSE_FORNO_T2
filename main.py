@@ -164,6 +164,7 @@ class Main():
         value = (round(signal)).to_bytes(4, 'little', signed=True)
         message = Modbus.send_control_signal + value
         self.uart.write(message, 11)
+        data = self.uart.read()
 
     def debug_algorithm(self):
         i = 0

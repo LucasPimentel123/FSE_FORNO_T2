@@ -34,7 +34,7 @@ class Main():
 
     def menu(self):
         while(True):
-
+            time.sleep(2)
             if self.response == LIGAR_FORNO:
                 message = Modbus.send_sys_on_off + b'\x01'
                 self.uart.write(message,  8)
@@ -82,11 +82,11 @@ class Main():
                 if data == b'\x01\x00\x00\x00':
                     print("Modo curva ativado") 
 
-                self.debug_algorithm()
+                    self.debug_algorithm()
 
-                message = Modbus.change_ref_temp_control_mode + b'\x00'
-                self.uart.write(message,  8)
-                data = self.uart.read()
+                    message = Modbus.change_ref_temp_control_mode + b'\x00'
+                    self.uart.write(message,  8)
+                    data = self.uart.read()
                 if data == b'\x00\x00\x00\x00':
                     print("Modo curva desativado") 
             else:
@@ -122,10 +122,12 @@ class Main():
         self.room_temp = self.i2c.return_room_temp()
     
     def read_user_comands(self):
+            self.response = 0
             print("Esperando comando...")
             self.uart.write(Modbus.read_user_commands,  7)
 
             response = self.uart.read()
+            time.sleep(1)
             self.response = struct.unpack('i', response)[0]
             print("Comando do usuário: ", self.response)
 
@@ -162,13 +164,13 @@ class Main():
         value = (round(signal)).to_bytes(4, 'little', signed=True)
         message = Modbus.send_control_signal + value
         self.uart.write(message, 11)
-        self.uart.read()
 
     def debug_algorithm(self):
         i = 0
         pilha_tempo = [0, 60, 120, 240, 260, 300, 360, 420,480, 600]
         pilha_ref = [25, 38, 46, 54, 57, 61, 63 ,54, 33, 25]
         aux = 0
+        print(self.response)
         while len(pilha_tempo) > 0 and self.response != ALTERAR_MODO:
             if(pilha_tempo[0] == i):
                 pilha_tempo.pop(0)
@@ -176,7 +178,7 @@ class Main():
         
             pid_atual = self.pid.pid_controle(aux , self.internal_temp)
 
-            self.send_control_signal(pid_atual)
+            ##self.send_control_signal(pid_atual)
 
             if(pid_atual < 0):
                 pid_atual *= -1
@@ -190,6 +192,7 @@ class Main():
 
             time.sleep(1)
             i = i + 1
+            print(i)
         
     def register_log(self):
         header = ['Data/Hora', 'Temp Interna', 'Temp Ambiente', 'Temp Ref', 'Valor Acionamento' ]
